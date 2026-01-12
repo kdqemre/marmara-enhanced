@@ -379,13 +379,35 @@ UniValue marmara_info(const UniValue& params, bool fHelp, const CPubKey& remotep
     return(result);
 }
 
+
+//TODO List all adresses, pubkeys and related coins
 UniValue e_marmarainfo(const UniValue& params, bool fHelp, const CPubKey& remotepk)
 {
     if (fHelp || params.size() > 1)
         throw runtime_error(
             "e_marmarainfo ( \"pubkey\" )\n"
-            "\nReturns fast wallet and address information for Marmara (M1 Optimized).\n"
+            "\nReturns a high-speed summary of Marmara addresses and balances.\n"
+            "This command scans only the local wallet and provides an optimized alternative to 'marmarainfo'.\n"
+            "\nArguments:\n"
+            "1. \"pubkey\"           (string, optional) The pubkey to check.\n"
+            "                        - If provided: Returns data for that specific pubkey.\n"
+            "                        - If omitted: Uses the node's default pubkey (mypubkey).\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"result\": \"success\",\n"
+            "  \"myNormalAddress\": \"address\",         (string) Normal MCL destination address.\n"
+            "  \"myPubkeyNormalAmount\": amount,       (numeric) Normal balance for this pubkey (8 decimals).\n"
+            "  \"myWalletNormalAmount\": amount,       (numeric) Total spendable normal balance in wallet.\n"
+            "  \"myCCActivatedAddress\": \"address\",     (string) Activated address.\n"
+            "  \"myActivatedAmount\": amount,          (numeric) Confirmed activated amount (8 decimals).\n"
+            "  \"myCCAddress\": \"address\",              (string) Global Marmara CC address.\n"
+            "  \"myCCBalance\": amount                 (numeric) Global CC address balance.\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("e_marmarainfo", "")
+            + HelpExampleCli("e_marmarainfo", "\"029cbc1b63...\"")
         );
+
 
     if (ensure_CCrequirements(EVAL_MARMARA) < 0)
         throw runtime_error(CC_REQUIREMENTS_MSG);
@@ -408,38 +430,39 @@ UniValue e_marmarainfo(const UniValue& params, bool fHelp, const CPubKey& remote
     struct CCcontract_info *cp, C;
     cp = CCinit(&C, EVAL_MARMARA);
 
-    // 2. Marmara Standartlarına Göre Adresleri Hesapla
     CPubKey Marmarapk = GetUnspendable(cp, 0);
     std::vector<uint8_t> vrefpk(refpk.begin(), refpk.end());
 
     char mynormaladdr[64], activated1of2addr[64], myccaddr[64];
     
-    // a. Normal Adres (RRVK...)
     Getscriptaddress(mynormaladdr, CScript() << ParseHex(HexStr(vrefpk)) << OP_CHECKSIG);
     
-    // b. Activated Adresi (RPaY...)
     GetCCaddress1of2(cp, activated1of2addr, Marmarapk, vrefpk);
     
-    // c. Global CC Adresi (RPnn...)
     GetCCaddress(cp, myccaddr, vrefpk);
 
-    // 3. Bakiyeleri Hesapla (Marmara'nın Kendi Hızlı Fonksiyonuyla)
-    // CCaddress_balance(adres, CCflag, mempool_dahil_mi)
-    // CCflag: 0 = Normal, 1 = CC
     CAmount nPubkeyNormal = CCaddress_balance(mynormaladdr, 0, true);
     CAmount nActivated = CCaddress_balance(activated1of2addr, 1, true);
     CAmount nCCBalance = CCaddress_balance(myccaddr, 1, true);
 
-    // 4. Sonuçları Paketle
+
+    auto Format8 = [](CAmount n) {
+        int64_t n_abs = (n > 0 ? n : -n);
+        int64_t quotient = n_abs / COIN;
+        int64_t remainder = n_abs % COIN;
+        return UniValue(UniValue::VNUM, strprintf("%s%lld.%08lld", (n < 0 ? "-" : ""), quotient, remainder));
+    };
+
+   
     result.push_back(Pair("result", "success"));
     result.push_back(Pair("myNormalAddress", std::string(mynormaladdr)));
-    result.push_back(Pair("myPubkeyNormalAmount", ValueFromAmount(nPubkeyNormal)));
-    result.push_back(Pair("myWalletNormalAmount", ValueFromAmount(pwalletMain->GetBalance())));
+    result.push_back(Pair("myPubkeyNormalAmount", Format8(nPubkeyNormal)));
+    result.push_back(Pair("myWalletNormalAmount", Format8(pwalletMain->GetBalance())));
     result.push_back(Pair("myCCActivatedAddress", std::string(activated1of2addr)));
-    result.push_back(Pair("myActivatedAmount", ValueFromAmount(nActivated)));
-    result.push_back(Pair("myTotalAmountOnActivatedAddress", ValueFromAmount(nActivated)));
+    result.push_back(Pair("myActivatedAmount", Format8(nActivated)));
+    result.push_back(Pair("myTotalAmountOnActivatedAddress", Format8(nActivated)));
     result.push_back(Pair("myCCAddress", std::string(myccaddr)));
-    result.push_back(Pair("myCCBalance", ValueFromAmount(nCCBalance)));
+    result.push_back(Pair("myCCBalance", Format8(nCCBalance)));
 
     return result;
 }
