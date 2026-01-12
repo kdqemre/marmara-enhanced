@@ -354,6 +354,7 @@ extern UniValue getunconfirmedbalance(const UniValue& params, bool fHelp, const 
 extern UniValue movecmd(const UniValue& params, bool fHelp, const CPubKey& mypk);
 extern UniValue sendfrom(const UniValue& params, bool fHelp, const CPubKey& mypk);
 extern UniValue sendmany(const UniValue& params, bool fHelp, const CPubKey& mypk);
+extern UniValue e_sendmany(const UniValue& params, bool fHelp, const CPubKey& mypk);
 extern UniValue addmultisigaddress(const UniValue& params, bool fHelp, const CPubKey& mypk);
 extern UniValue createmultisig(const UniValue& params, bool fHelp, const CPubKey& mypk);
 extern UniValue listreceivedbyaddress(const UniValue& params, bool fHelp, const CPubKey& mypk);

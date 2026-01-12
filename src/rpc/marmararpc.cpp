@@ -13,6 +13,9 @@
  *                                                                            *
  ******************************************************************************/
 
+#include "base58.h"
+#include "pubkey.h"
+
 #include <stdint.h>
 #include <string.h>
 #include <numeric>
@@ -375,6 +378,72 @@ UniValue marmara_info(const UniValue& params, bool fHelp, const CPubKey& remotep
     result = MarmaraInfo(pk, firstheight, lastheight, minamount, maxamount, currency);
     return(result);
 }
+
+UniValue e_marmarainfo(const UniValue& params, bool fHelp, const CPubKey& remotepk)
+{
+    if (fHelp || params.size() > 1)
+        throw runtime_error(
+            "e_marmarainfo ( \"pubkey\" )\n"
+            "\nReturns fast wallet and address information for Marmara (M1 Optimized).\n"
+        );
+
+    if (ensure_CCrequirements(EVAL_MARMARA) < 0)
+        throw runtime_error(CC_REQUIREMENTS_MSG);
+
+#ifdef ENABLE_WALLET
+    if (!EnsureWalletIsAvailable(false))
+        throw runtime_error("wallet is required");
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+#endif
+
+    // 1. Pubkey Belirleme
+    CPubKey refpk;
+    if (params.size() > 0) refpk = CPubKey(ParseHex(params[0].get_str()));
+    else refpk = remotepk.IsFullyValid() ? remotepk : pubkey2pk(Mypubkey());
+
+    if (!refpk.IsFullyValid())
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid pubkey.");
+
+    UniValue result(UniValue::VOBJ);
+    struct CCcontract_info *cp, C;
+    cp = CCinit(&C, EVAL_MARMARA);
+
+    // 2. Marmara Standartlarına Göre Adresleri Hesapla
+    CPubKey Marmarapk = GetUnspendable(cp, 0);
+    std::vector<uint8_t> vrefpk(refpk.begin(), refpk.end());
+
+    char mynormaladdr[64], activated1of2addr[64], myccaddr[64];
+    
+    // a. Normal Adres (RRVK...)
+    Getscriptaddress(mynormaladdr, CScript() << ParseHex(HexStr(vrefpk)) << OP_CHECKSIG);
+    
+    // b. Activated Adresi (RPaY...)
+    GetCCaddress1of2(cp, activated1of2addr, Marmarapk, vrefpk);
+    
+    // c. Global CC Adresi (RPnn...)
+    GetCCaddress(cp, myccaddr, vrefpk);
+
+    // 3. Bakiyeleri Hesapla (Marmara'nın Kendi Hızlı Fonksiyonuyla)
+    // CCaddress_balance(adres, CCflag, mempool_dahil_mi)
+    // CCflag: 0 = Normal, 1 = CC
+    CAmount nPubkeyNormal = CCaddress_balance(mynormaladdr, 0, true);
+    CAmount nActivated = CCaddress_balance(activated1of2addr, 1, true);
+    CAmount nCCBalance = CCaddress_balance(myccaddr, 1, true);
+
+    // 4. Sonuçları Paketle
+    result.push_back(Pair("result", "success"));
+    result.push_back(Pair("myNormalAddress", std::string(mynormaladdr)));
+    result.push_back(Pair("myPubkeyNormalAmount", ValueFromAmount(nPubkeyNormal)));
+    result.push_back(Pair("myWalletNormalAmount", ValueFromAmount(pwalletMain->GetBalance())));
+    result.push_back(Pair("myCCActivatedAddress", std::string(activated1of2addr)));
+    result.push_back(Pair("myActivatedAmount", ValueFromAmount(nActivated)));
+    result.push_back(Pair("myTotalAmountOnActivatedAddress", ValueFromAmount(nActivated)));
+    result.push_back(Pair("myCCAddress", std::string(myccaddr)));
+    result.push_back(Pair("myCCBalance", ValueFromAmount(nCCBalance)));
+
+    return result;
+}
+
 
 UniValue marmara_holderloops(const UniValue& params, bool fHelp, const CPubKey& remotepk)
 {
@@ -799,6 +868,7 @@ static const CRPCCommand commands[] =
     { "marmara",       "marmaraissue",   &marmara_issue,      true },
     { "marmara",       "marmaratransfer",   &marmara_transfer,      true },
     { "marmara",       "marmarainfo",   &marmara_info,      true },
+    { "marmara",       "e_marmarainfo", &e_marmarainfo,     true },
     { "marmara",       "marmaracreditloop",   &marmara_creditloop,      true },
     { "marmara",       "marmarasettlement",   &marmara_settlement,      true },
     { "marmara",       "marmaralock",   &marmara_lock,      true },
